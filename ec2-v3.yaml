@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Deploy Single EC2 Linux Instance"
+Parameters:
+  EC2InstanceType:
+    AllowedValues:
+      - t3.nano
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+      - t3.2xlarge
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+    Default: t3.micro
+    Description: Amazon EC2 instance type
+    Type: String
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: "/aws/service/canonical/ubuntu/server/jammy/stable/current/amd64/hvm/ebs-gp2/ami-id"
+  SubnetID:
+    Description: ID of a Subnet.
+    Type: AWS::EC2::Subnet::Id
+  VPCID:
+    Description: ID of the target VPC (e.g., vpc-0343606e).
+    Type: AWS::EC2::VPC::Id
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instances
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: must be the name of an existing EC2 KeyPair.  
+
+Resources:
+
+  EC2InstanceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EC2 Instance Security Group
+      VpcId: !Ref 'VPCID'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0  
+
+  EC2Instance:
+    Type: "AWS::EC2::Instance"
+    Properties:
+      UserData: !Base64
+        Fn::Join:
+          - ""
+          - - IPAddress=
+            - !Ref IPAddress 
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref EC2InstanceType
+      KeyName: !Ref KeyName
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-Server"
+      NetworkInterfaces:
+        - DeleteOnTermination: true
+          DeviceIndex: '0'
+          SubnetId: !Ref 'SubnetID'
+          GroupSet:
+            - !Ref EC2InstanceSG		  
+  IPAddress:
+    Type: AWS::EC2::EIP
+
+  IPAssoc:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref EC2Instance
+      AllocationId: !GetAtt IPAddress.AllocationId
+Outputs:
+  EC2InstancePrivateIP:
+    Value: !GetAtt 'EC2Instance.PrivateIp'
+    Description: Private IP for EC2 Instances
