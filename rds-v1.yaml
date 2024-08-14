@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: 'RDS example MySQL 8.0'
+
+Parameters:
+  DBName:
+    Type: String
+    Description: 'The database name'
+    MinLength: 5
+    MaxLength: 64
+    AllowedPattern: '^[a-z]*$'
+  DBInstanceIdentifier:
+    Type: String
+    Description: 'The database instance name'
+    MinLength: 5
+    MaxLength: 64
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9\-]*$'
+  DBUser:
+    NoEcho: true
+    Type: String
+    Description: 'The database admin account username'
+    MinLength: 4
+    MaxLength: 16
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+  DBPassword:
+    NoEcho: true
+    Type: String
+    Description: 'The database admin account password'
+    MinLength: 8
+    MaxLength: 41
+    AllowedPattern: '[a-zA-Z0-9]*'
+  VPC:
+    Description: "VPC to launch instances into"
+    Type: "AWS::EC2::VPC::Id"  
+  SubnetIds:
+    Type: 'List<AWS::EC2::Subnet::Id>'
+    Description: 'The subnet ids (at least two zone)'
+
+Resources:
+  MyDB:
+    Type: 'AWS::RDS::DBInstance'
+    Properties:
+      AutoMinorVersionUpgrade: true
+      AllocatedStorage: 20
+      BackupRetentionPeriod: 1
+      DeletionProtection: true
+      DBInstanceClass: 'db.t3.micro'
+      DBInstanceIdentifier: !Ref DBInstanceIdentifier
+      DBName: !Ref DBName
+      DBSubnetGroupName: !Ref MyDBSubnetGroup
+      EnableCloudwatchLogsExports:
+        - error
+        - general
+        - slowquery
+      EnablePerformanceInsights: false
+      Engine: 'mysql'
+      EngineVersion: '8.0'
+      MasterUsername: !Ref DBUser
+      MasterUserPassword: !Ref DBPassword
+      MaxAllocatedStorage: 50
+      MonitoringInterval: '60'
+      MonitoringRoleArn: !GetAtt MyDBEnhancedMonitoringRole.Arn
+      MultiAZ: false
+      Port: '3306'
+      PubliclyAccessible: false
+      PreferredBackupWindow: '02:15-02:45'
+      PreferredMaintenanceWindow: 'tue:01:00-tue:01:30'
+      StorageEncrypted: false
+      StorageType: 'gp2'
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+  MyDBSubnetGroup:
+    Type: 'AWS::RDS::DBSubnetGroup'
+    Properties:
+      SubnetIds: !Ref SubnetIds
+      DBSubnetGroupDescription: 'Subnets available for the RDS DB Instance'
+  MyDBEnhancedMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: '/'
+      Description: 'RDS Enhanced monitoring role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: ''
+          Effect: Allow
+          Principal:
+            Service: 'monitoring.rds.amazonaws.com'
+          Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole'
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable MySQL access
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: "3306"
+          ToPort: "3306"
+          CidrIp: 0.0.0.0/0      
+
+Outputs:
+  JDBCConnectionString:
+    Description: 'JDBC connection string for database'
+    Value: !Sub 'jdbc:mysql://${MyDB.Endpoint.Address}:${MyDB.Endpoint.Port}/${DBName}'
+  DBAddress:
+    Description: 'Address of database endpoint'
+    Value: !GetAtt MyDB.Endpoint.Address
+  DBPort:
+    Description: 'Database endpoint port number'
+    Value: !GetAtt MyDB.Endpoint.Port
